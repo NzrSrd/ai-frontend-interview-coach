@@ -62,7 +62,12 @@ function ratio(numerator: number, denominator: number): number | null {
  * then calling this once on the total.
  */
 export function computeMetrics(m: ConfusionMatrix): Metrics {
-  const { truePositives: tp, falseNegatives: fn, falsePositives: fp, trueNegatives: tn } = m;
+  const {
+    truePositives: tp,
+    falseNegatives: fn,
+    falsePositives: fp,
+    trueNegatives: tn,
+  } = m;
 
   const precision = ratio(tp, tp + fp);
   const recall = ratio(tp, tp + fn);

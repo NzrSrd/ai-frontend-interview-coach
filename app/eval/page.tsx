@@ -2,7 +2,8 @@ import EvalDashboard from "@/components/EvalDashboard";
 
 export const metadata = {
   title: "Evaluation · AI Frontend Interview Coach",
-  description: "Precision, recall, and false-positive rate for generated answers.",
+  description:
+    "Precision, recall, and false-positive rate for generated answers.",
 };
 
 export default function EvalPage() {
@@ -15,7 +16,8 @@ export default function EvalPage() {
           </h1>
           <p className="max-w-2xl text-lg leading-8 text-zinc-600 dark:text-zinc-400">
             Grade the coach&apos;s generated answers against a labeled reference
-            set and track precision, recall, and false-positive rate across runs.
+            set and track precision, recall, and false-positive rate across
+            runs.
           </p>
         </header>
 

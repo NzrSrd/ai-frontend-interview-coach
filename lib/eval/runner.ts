@@ -51,12 +51,8 @@ async function generateAnswer(
 }
 
 function buildJudgePrompt(item: GoldItem, answer: string): string {
-  const keyPoints = item.keyPoints
-    .map((p, i) => `  ${i}. ${p}`)
-    .join("\n");
-  const distractors = item.distractors
-    .map((d, i) => `  ${i}. ${d}`)
-    .join("\n");
+  const keyPoints = item.keyPoints.map((p, i) => `  ${i}. ${p}`).join("\n");
+  const distractors = item.distractors.map((d, i) => `  ${i}. ${d}`).join("\n");
 
   return [
     `QUESTION:\n${item.question}`,
@@ -173,7 +169,12 @@ async function judgeAnswer(
   item: GoldItem,
   answer: string,
   signal?: AbortSignal,
-): Promise<Omit<EvalItemResult, "id" | "topic" | "difficulty" | "question" | "generatedAnswer" | "matrix">> {
+): Promise<
+  Omit<
+    EvalItemResult,
+    "id" | "topic" | "difficulty" | "question" | "generatedAnswer" | "matrix"
+  >
+> {
   const raw = await openRouterChat(
     [
       { role: "system", content: JUDGE_SYSTEM_PROMPT },
@@ -199,7 +200,12 @@ export async function evaluateItem(
   };
 
   try {
-    const generatedAnswer = await generateAnswer(item, settings, strategy, signal);
+    const generatedAnswer = await generateAnswer(
+      item,
+      settings,
+      strategy,
+      signal,
+    );
     const graded = await judgeAnswer(item, generatedAnswer, signal);
     const matrix = toConfusionMatrix(
       graded.keyPointResults,

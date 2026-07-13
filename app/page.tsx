@@ -1,3 +1,4 @@
+import Link from "next/link";
 import InterviewForm from "@/components/InterviewForm";
 
 export default function Home() {
@@ -12,6 +13,12 @@ export default function Home() {
             Pick a topic and difficulty and get AI-generated interview questions
             with model answers and likely follow-ups.
           </p>
+          <Link
+            href="/eval"
+            className="inline-flex w-fit items-center rounded-md bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-800 dark:bg-zinc-50 dark:text-black dark:hover:bg-zinc-200"
+          >
+            Eval Dashboard
+          </Link>
         </header>
 
         <InterviewForm />

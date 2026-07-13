@@ -125,14 +125,12 @@ async function chatAttempt(
     throw new OpenRouterError(message);
   }
 
-  const data = (await res.json().catch(() => null)) as
-    | {
-        choices?: Array<{
-          message?: { content?: string };
-          finish_reason?: string;
-        }>;
-      }
-    | null;
+  const data = (await res.json().catch(() => null)) as {
+    choices?: Array<{
+      message?: { content?: string };
+      finish_reason?: string;
+    }>;
+  } | null;
 
   const choice = data?.choices?.[0];
   const content = choice?.message?.content;
@@ -215,7 +213,9 @@ export function parseQuestions(raw: string): InterviewQuestion[] {
       : parsed;
 
   if (!Array.isArray(list)) {
-    throw new OpenRouterError("Model output did not contain a questions array.");
+    throw new OpenRouterError(
+      "Model output did not contain a questions array.",
+    );
   }
 
   const questions: InterviewQuestion[] = [];

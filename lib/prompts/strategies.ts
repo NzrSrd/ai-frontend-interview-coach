@@ -37,7 +37,8 @@ export const STRATEGY_DESCRIPTIONS: Record<PromptStrategy, string> = {
   persona: "Establishes an expert role and audience before answering.",
   "chain-of-thought": "Reason through the mechanism step by step, then answer.",
   "few-shot": "Two worked examples set the bar for depth and precision.",
-  "self-critique": "Draft, self-review for errors, then output the vetted answer.",
+  "self-critique":
+    "Draft, self-review for errors, then output the vetted answer.",
 };
 
 // The shared output contract appended to every strategy so grading is fair.

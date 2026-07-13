@@ -51,7 +51,10 @@ export async function POST(request: Request): Promise<Response> {
     return json<InterviewResponse>(result, 200);
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") {
-      return json<ApiError>({ error: "The request timed out. Try again." }, 504);
+      return json<ApiError>(
+        { error: "The request timed out. Try again." },
+        504,
+      );
     }
     if (err instanceof OpenRouterError) {
       return json<ApiError>(

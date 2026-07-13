@@ -157,7 +157,8 @@ export default function InterviewForm() {
         </label>
 
         <label className="flex flex-col gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-          Focus area <span className="font-normal text-zinc-500">(optional)</span>
+          Focus area{" "}
+          <span className="font-normal text-zinc-500">(optional)</span>
           <input
             type="text"
             value={focus}

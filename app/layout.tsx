@@ -15,7 +15,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "AI Frontend Interview Coach",
-  description: "AI-powered Frontend Interview Coach for React, Next.js, and TypeScript",
+  description:
+    "AI-powered Frontend Interview Coach for React, Next.js, and TypeScript",
 };
 
 export default function RootLayout({
@@ -26,11 +27,12 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+    >
       <body>
-        <Header/>
+        <Header />
         <main className="flex min-h-full flex-col">{children}</main>
-      </body> 
+      </body>
     </html>
   );
 }

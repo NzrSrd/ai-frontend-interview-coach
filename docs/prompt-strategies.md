@@ -11,13 +11,13 @@ compares precision, recall, F1, and accuracy.
 
 ## The five strategies
 
-| Key | Technique | Idea |
-| --- | --- | --- |
-| `zero-shot` | Zero-shot | One direct instruction. No examples, no reasoning scaffold. The baseline. |
-| `persona` | Role / persona | Prime an expert identity ("principal frontend engineer") and a demanding audience before answering. |
-| `chain-of-thought` | Chain-of-thought | Instruct the model to reason through the mechanism step by step, then let that reasoning shape the explanation. |
-| `few-shot` | Few-shot | Two worked Q→A exemplars (on topics *disjoint* from the gold set) set the bar for depth and precision. |
-| `self-critique` | Self-critique (reflexion) | Draft, then silently audit the draft for overclaims/misconceptions, and emit only the corrected answer. |
+| Key                | Technique                 | Idea                                                                                                            |
+| ------------------ | ------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `zero-shot`        | Zero-shot                 | One direct instruction. No examples, no reasoning scaffold. The baseline.                                       |
+| `persona`          | Role / persona            | Prime an expert identity ("principal frontend engineer") and a demanding audience before answering.             |
+| `chain-of-thought` | Chain-of-thought          | Instruct the model to reason through the mechanism step by step, then let that reasoning shape the explanation. |
+| `few-shot`         | Few-shot                  | Two worked Q→A exemplars (on topics _disjoint_ from the gold set) set the bar for depth and precision.          |
+| `self-critique`    | Self-critique (reflexion) | Draft, then silently audit the draft for overclaims/misconceptions, and emit only the corrected answer.         |
 
 All five share the same output contract (a few short prose paragraphs, no
 markdown) so the judge grades **content, not format**, and the comparison stays
@@ -50,13 +50,13 @@ POSTing `{ "strategy": "...", "settings": {...} }` to `/api/evaluate`.
 
 ### gpt-5-mini (the capable, default model)
 
-| Strategy | Precision | Recall | FPR | F1 | Accuracy | Unsup | TP/FN/FP/TN |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| zero-shot | 100% | 100% | 0% | **100%** | 100% | 0 | 27/0/0/21 |
-| persona | 100% | 100% | 0% | **100%** | 100% | 0 | 27/0/0/21 |
-| chain-of-thought | 100% | 100% | 0% | **100%** | 100% | 1 | 27/0/0/21 |
-| few-shot | 100% | 100% | 0% | **100%** | 100% | 0 | 27/0/0/21 |
-| self-critique | 100% | 100% | 0% | **100%** | 100% | 1 | 27/0/0/21 |
+| Strategy         | Precision | Recall | FPR | F1       | Accuracy | Unsup | TP/FN/FP/TN |
+| ---------------- | --------- | ------ | --- | -------- | -------- | ----- | ----------- |
+| zero-shot        | 100%      | 100%   | 0%  | **100%** | 100%     | 0     | 27/0/0/21   |
+| persona          | 100%      | 100%   | 0%  | **100%** | 100%     | 0     | 27/0/0/21   |
+| chain-of-thought | 100%      | 100%   | 0%  | **100%** | 100%     | 1     | 27/0/0/21   |
+| few-shot         | 100%      | 100%   | 0%  | **100%** | 100%     | 0     | 27/0/0/21   |
+| self-critique    | 100%      | 100%   | 0%  | **100%** | 100%     | 1     | 27/0/0/21   |
 
 The gold set is **saturated** on this model — every strategy is perfect. The
 metric can't separate them. The only differences are secondary:
@@ -68,13 +68,13 @@ metric can't separate them. The only differences are secondary:
 
 ### gpt-5-nano (the cheap model — where differences surface)
 
-| Strategy | Precision | Recall | FPR | F1 | Accuracy | Unsup | TP/FN/FP/TN |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| self-critique | 100% | **100%** | 0% | **100%** | 100% | 0 | 27/0/0/21 |
-| zero-shot | 100% | 96.3% | 0% | 98.1% | 97.9% | 0 | 26/1/0/21 |
-| chain-of-thought | 100% | 96.3% | 0% | 98.1% | 97.9% | 2 | 26/1/0/21 |
-| few-shot | 100% | 96.3% | 0% | 98.1% | 97.9% | 0 | 26/1/0/21 |
-| persona | 100% | 92.6% | 0% | 96.2% | 95.8% | 1 | 25/2/0/21 |
+| Strategy         | Precision | Recall   | FPR | F1       | Accuracy | Unsup | TP/FN/FP/TN |
+| ---------------- | --------- | -------- | --- | -------- | -------- | ----- | ----------- |
+| self-critique    | 100%      | **100%** | 0%  | **100%** | 100%     | 0     | 27/0/0/21   |
+| zero-shot        | 100%      | 96.3%    | 0%  | 98.1%    | 97.9%    | 0     | 26/1/0/21   |
+| chain-of-thought | 100%      | 96.3%    | 0%  | 98.1%    | 97.9%    | 2     | 26/1/0/21   |
+| few-shot         | 100%      | 96.3%    | 0%  | 98.1%    | 97.9%    | 0     | 26/1/0/21   |
+| persona          | 100%      | 92.6%    | 0%  | 96.2%    | 95.8%    | 1     | 25/2/0/21   |
 
 Two robust observations:
 
@@ -83,7 +83,7 @@ Two robust observations:
    all separation is in **recall** (did the answer cover the key points?) plus
    the secondary unsupported-claims signal.
 2. **On a weak model, self-critique wins.** It's the only strategy that recovers
-   full recall (27/27) *and* adds no unsupported claims — the draft-then-audit
+   full recall (27/27) _and_ adds no unsupported claims — the draft-then-audit
    pass pays off precisely when the base model is more error-prone. `persona`
    was weakest (lowest recall), and `chain-of-thought` matched the baseline on
    recall but added the most unsupported claims (2).

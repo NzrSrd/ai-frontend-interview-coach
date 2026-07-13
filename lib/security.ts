@@ -29,8 +29,7 @@ import {
 } from "@/lib/prompts/strategies";
 
 export type ValidationResult<T> =
-  | { ok: true; data: T }
-  | { ok: false; error: string };
+  { ok: true; data: T } | { ok: false; error: string };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -42,12 +41,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * radius of prompt-injection / oversized-input attempts.
  */
 export function sanitizeText(input: string, maxLength: number): string {
-  return input
-    // Replace ASCII control characters (incl. NUL, ESC) with spaces.
-    .replace(/[\x00-\x1f\x7f]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, maxLength);
+  return (
+    input
+      // Replace ASCII control characters (incl. NUL, ESC) with spaces.
+      .replace(/[\x00-\x1f\x7f]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, maxLength)
+  );
 }
 
 /**
@@ -199,7 +200,8 @@ export function validateInterviewRequest(
     if (detectPromptInjection(focus)) {
       return {
         ok: false,
-        error: "focus looks like an instruction. Describe a topic to focus on instead.",
+        error:
+          "focus looks like an instruction. Describe a topic to focus on instead.",
       };
     }
     cleanFocus = sanitizeText(focus, MAX_FOCUS_LENGTH);

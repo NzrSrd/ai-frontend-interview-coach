@@ -1,10 +1,7 @@
 // Prompt construction for the interview coach. Kept separate from the
 // transport (openrouter.ts) so prompts can be iterated on / tested in isolation.
 
-import {
-  DIFFICULTY_LABELS,
-  InterviewRequest,
-} from "@/types/interview";
+import { DIFFICULTY_LABELS, InterviewRequest } from "@/types/interview";
 
 export const SYSTEM_PROMPT = `You are a senior frontend engineering interviewer and coach. \
 You generate realistic technical interview questions with strong, concise model answers \

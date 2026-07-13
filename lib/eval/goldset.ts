@@ -29,7 +29,8 @@ export const GOLD_SET: GoldItem[] = [
     id: "react-useeffect",
     topic: "React",
     difficulty: "junior",
-    question: "What does the useEffect hook do and how does its dependency array work?",
+    question:
+      "What does the useEffect hook do and how does its dependency array work?",
     keyPoints: [
       "useEffect runs side effects after the component renders.",
       "The dependency array controls when the effect re-runs — it runs when a listed value changes.",
@@ -46,7 +47,8 @@ export const GOLD_SET: GoldItem[] = [
     id: "ts-unknown-any",
     topic: "TypeScript",
     difficulty: "mid",
-    question: "What is the difference between the `unknown` and `any` types in TypeScript?",
+    question:
+      "What is the difference between the `unknown` and `any` types in TypeScript?",
     keyPoints: [
       "`any` opts out of type checking; `unknown` is the type-safe counterpart.",
       "You must narrow an `unknown` value (e.g. with a typeof/instanceof check) before operating on it.",
@@ -62,7 +64,8 @@ export const GOLD_SET: GoldItem[] = [
     id: "js-event-loop",
     topic: "JavaScript",
     difficulty: "mid",
-    question: "Describe the JavaScript event loop and the difference between microtasks and macrotasks.",
+    question:
+      "Describe the JavaScript event loop and the difference between microtasks and macrotasks.",
     keyPoints: [
       "JavaScript runs on a single thread driven by an event loop.",
       "The current task must run to completion and clear the call stack before the next task is picked up.",
@@ -96,24 +99,26 @@ export const GOLD_SET: GoldItem[] = [
     id: "next-server-components",
     topic: "Next.js",
     difficulty: "senior",
-    question: "In the Next.js App Router, what is the difference between Server Components and Client Components?",
+    question:
+      "In the Next.js App Router, what is the difference between Server Components and Client Components?",
     keyPoints: [
       "Server Components render on the server and ship no component JavaScript to the client.",
-      "Client Components are opted in with the \"use client\" directive and can use state, effects, and browser APIs.",
+      'Client Components are opted in with the "use client" directive and can use state, effects, and browser APIs.',
       "Server Components cannot use client hooks like useState or useEffect.",
       "You can pass serializable props from a Server Component down into a Client Component.",
     ],
     distractors: [
       "Every component in the App Router is a Client Component by default.",
       "A Server Component can use useState as long as it imports it from React.",
-      "The \"use client\" directive must be added to every file under the app directory.",
+      'The "use client" directive must be added to every file under the app directory.',
     ],
   },
   {
     id: "sysdesign-debounce-throttle",
     topic: "System Design",
     difficulty: "senior",
-    question: "What is the difference between debouncing and throttling, and when would you use each on the frontend?",
+    question:
+      "What is the difference between debouncing and throttling, and when would you use each on the frontend?",
     keyPoints: [
       "Debouncing delays running the handler until a pause in events — it fires only after activity stops for a set delay.",
       "Throttling limits the handler to run at most once per fixed interval while events keep firing.",

@@ -122,7 +122,9 @@ export default function SettingsSidebar({
                 </option>
               ))}
             </select>
-            <span className={helpText}>{MODEL_DESCRIPTIONS[settings.model]}</span>
+            <span className={helpText}>
+              {MODEL_DESCRIPTIONS[settings.model]}
+            </span>
           </label>
 
           {/* Temperature */}
