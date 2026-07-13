@@ -9,7 +9,12 @@
 // so precision, recall, and FPR all derive from one coherent confusion matrix.
 // Kept free of runtime/Node imports so it can be bundled into client code.
 
-import { Difficulty, Topic } from "@/types/interview";
+import {
+  Difficulty,
+  InterviewQuestion,
+  LlmSettings,
+  Topic,
+} from "@/types/interview";
 
 /** A single labeled reference item the model is graded against. */
 export interface GoldItem {
@@ -100,3 +105,69 @@ export interface EvalRun {
     total: number;
   };
 }
+
+// --- Saving generated interviews for later evaluation ----------------------
+// Generated interviews (from POST /api/interview) are persisted client-side so
+// their answers can be graded later. Unlike the gold set, saved items carry no
+// hand-labeled reference; the eval route derives one from the QUESTION alone
+// (never the saved answer, which would leak) before judging.
+
+/**
+ * A grading reference derived from a question: the key points a good answer
+ * should contain and the distractors it should avoid. Cached in the saved
+ * dataset after first eval so the (deterministic) derive call is paid once —
+ * re-runs only pay for the judge.
+ */
+export interface DerivedLabels {
+  keyPoints: string[];
+  distractors: string[];
+}
+
+/** One generated interview persisted in the browser (localStorage). */
+export interface SavedInterview {
+  id: string;
+  /** Epoch ms when it was generated/saved. */
+  createdAt: number;
+  topic: Topic;
+  difficulty: Difficulty;
+  /** The model settings the answers were generated under. */
+  settings: LlmSettings;
+  /** The generated questions, each with its model answer and follow-ups. */
+  questions: InterviewQuestion[];
+  /**
+   * Auto-derived grading labels, cached per question index after an eval run.
+   * Keyed by the question's index in `questions`. Absent until first evaluated.
+   */
+  labels?: Record<number, DerivedLabels>;
+}
+
+/** A single saved question+answer pair sent to the eval route for grading. */
+export interface SavedEvalItem {
+  id: string;
+  topic: Topic;
+  difficulty: Difficulty;
+  question: string;
+  /** The saved model answer — this is the text under test. */
+  answer: string;
+  /**
+   * Previously derived labels for this question. When present and valid, the
+   * server skips the derive call and judges against these instead.
+   */
+  labels?: DerivedLabels;
+}
+
+/** Request body for POST /api/evaluate/saved. */
+export interface SavedEvalRequest {
+  items: SavedEvalItem[];
+  /** Settings the answers were generated under; shown in results only. */
+  settings?: LlmSettings;
+}
+
+/** Upper bound on how many saved items a single eval run will grade. */
+export const MAX_SAVED_EVAL_ITEMS = 30;
+/** Character caps applied server-side before text reaches a model prompt. */
+export const MAX_EVAL_QUESTION_LENGTH = 500;
+export const MAX_EVAL_ANSWER_LENGTH = 4000;
+/** Bounds on a derived reference (shared by the auto-labeler and validation). */
+export const MAX_DERIVED_KEY_POINTS = 5;
+export const MAX_DERIVED_DISTRACTORS = 4;

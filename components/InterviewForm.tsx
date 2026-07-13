@@ -20,6 +20,7 @@ import {
 import LoadingState from "@/components/LoadingState";
 import ResultCard from "@/components/ResultCard";
 import SettingsSidebar from "@/components/SettingsSidebar";
+import { saveInterview } from "@/lib/savedInterviews";
 
 export default function InterviewForm() {
   const [topic, setTopic] = useState<Topic>(TOPICS[0]);
@@ -64,8 +65,12 @@ export default function InterviewForm() {
         return;
       }
 
-      setResult(data as InterviewResponse);
+      const interview = data as InterviewResponse;
+      setResult(interview);
       setStatus("done");
+      // Auto-save every generation so its answers can be graded later on the
+      // eval page. Best-effort and client-only — never block the UI on it.
+      saveInterview(interview, settings);
     } catch {
       setError("Could not reach the server. Please try again.");
       setStatus("error");

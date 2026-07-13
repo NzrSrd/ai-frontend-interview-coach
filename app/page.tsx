@@ -1,4 +1,3 @@
-import Link from "next/link";
 import InterviewForm from "@/components/InterviewForm";
 
 export default function Home() {

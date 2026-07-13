@@ -10,7 +10,7 @@ export default function Header() {
 
   return (
     <header className="flex h-16 w-full items-center justify-center border-b border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-600 dark:border-zinc-800 dark:bg-black dark:text-zinc-400 gap-4">
-      <div className="flex w-full max-w-4xl items-center">
+      <div className="flex w-full max-w-3xl items-center">
         {/* Grows to push the logo to center when the button is hidden */}
         <div
           aria-hidden

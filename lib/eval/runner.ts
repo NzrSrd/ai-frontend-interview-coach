@@ -165,7 +165,7 @@ function parseJudge(
 }
 
 /** Ask the judge to grade a single generated answer. */
-async function judgeAnswer(
+export async function judgeAnswer(
   item: GoldItem,
   answer: string,
   signal?: AbortSignal,

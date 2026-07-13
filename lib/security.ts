@@ -27,6 +27,15 @@ import {
   PROMPT_STRATEGIES,
   PromptStrategy,
 } from "@/lib/prompts/strategies";
+import {
+  DerivedLabels,
+  MAX_DERIVED_DISTRACTORS,
+  MAX_DERIVED_KEY_POINTS,
+  MAX_EVAL_ANSWER_LENGTH,
+  MAX_EVAL_QUESTION_LENGTH,
+  MAX_SAVED_EVAL_ITEMS,
+  SavedEvalItem,
+} from "@/types/eval";
 
 export type ValidationResult<T> =
   { ok: true; data: T } | { ok: false; error: string };
@@ -218,6 +227,114 @@ export function validateInterviewRequest(
       settings: validateLlmSettings(settings),
     },
   };
+}
+
+/**
+ * Validate an untrusted `POST /api/evaluate/saved` body. The items originate
+ * from the browser's localStorage, which the user can hand-edit, so treat every
+ * field as hostile: allowlist topic/difficulty, require non-empty question/
+ * answer strings, and sanitize + clamp the free text before it reaches a model
+ * prompt. Unlike the interview `focus` field we do NOT run injection detection
+ * here — legitimate technical answers routinely contain words like "system" or
+ * "prompt" — the length clamp and control-char strip are the guardrail instead.
+ */
+/**
+ * Sanitize + clamp an untrusted string array (used for cached label lists). Each
+ * entry is treated as prompt-bound text, so it gets the same control-char strip
+ * and length cap as the question field before it can reach a model.
+ */
+function cleanStringList(value: unknown, max: number): string[] {
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "string") continue;
+    const clean = sanitizeText(entry, MAX_EVAL_QUESTION_LENGTH);
+    if (clean !== "") out.push(clean);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+/**
+ * Validate optional client-supplied labels. Returns undefined (→ server derives
+ * fresh) unless there is at least one usable key point, so tampered or empty
+ * caches degrade to a correct re-derive rather than a broken grade.
+ */
+function validateLabels(input: unknown): DerivedLabels | undefined {
+  if (!isRecord(input)) return undefined;
+  const keyPoints = cleanStringList(input.keyPoints, MAX_DERIVED_KEY_POINTS);
+  if (keyPoints.length === 0) return undefined;
+  const distractors = cleanStringList(
+    input.distractors,
+    MAX_DERIVED_DISTRACTORS,
+  );
+  return { keyPoints, distractors };
+}
+
+export function validateSavedEvalRequest(
+  body: unknown,
+): ValidationResult<{ items: SavedEvalItem[]; settings: LlmSettings }> {
+  if (!isRecord(body)) {
+    return { ok: false, error: "Request body must be a JSON object." };
+  }
+
+  const rawItems = body.items;
+  if (!Array.isArray(rawItems) || rawItems.length === 0) {
+    return { ok: false, error: "items must be a non-empty array." };
+  }
+  if (rawItems.length > MAX_SAVED_EVAL_ITEMS) {
+    return {
+      ok: false,
+      error: `Too many items; evaluate at most ${MAX_SAVED_EVAL_ITEMS} at a time.`,
+    };
+  }
+
+  const items: SavedEvalItem[] = [];
+  for (const raw of rawItems) {
+    if (!isRecord(raw)) {
+      return { ok: false, error: "Each item must be a JSON object." };
+    }
+    const { id, topic, difficulty, question, answer } = raw;
+
+    if (typeof id !== "string" || id.trim() === "") {
+      return { ok: false, error: "Each item needs a non-empty id." };
+    }
+    if (typeof topic !== "string" || !TOPICS.includes(topic as Topic)) {
+      return { ok: false, error: `item topic must be one of: ${TOPICS.join(", ")}.` };
+    }
+    if (
+      typeof difficulty !== "string" ||
+      !DIFFICULTIES.includes(difficulty as Difficulty)
+    ) {
+      return {
+        ok: false,
+        error: `item difficulty must be one of: ${DIFFICULTIES.join(", ")}.`,
+      };
+    }
+    if (typeof question !== "string" || typeof answer !== "string") {
+      return { ok: false, error: "item question and answer must be strings." };
+    }
+
+    const cleanQuestion = sanitizeText(question, MAX_EVAL_QUESTION_LENGTH);
+    const cleanAnswer = sanitizeText(answer, MAX_EVAL_ANSWER_LENGTH);
+    if (cleanQuestion === "" || cleanAnswer === "") {
+      return {
+        ok: false,
+        error: "item question and answer must be non-empty.",
+      };
+    }
+
+    items.push({
+      id: id.trim(),
+      topic: topic as Topic,
+      difficulty: difficulty as Difficulty,
+      question: cleanQuestion,
+      answer: cleanAnswer,
+      labels: validateLabels(raw.labels),
+    });
+  }
+
+  return { ok: true, data: { items, settings: validateLlmSettings(body.settings) } };
 }
 
 // --- Rate limiting ---------------------------------------------------------
