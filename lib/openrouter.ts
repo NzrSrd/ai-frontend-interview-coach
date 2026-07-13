@@ -4,11 +4,8 @@
 
 import {
   DEFAULT_LLM_SETTINGS,
-  InterviewQuestion,
   InterviewRequest,
-  InterviewResponse,
   LlmSettings,
-  MAX_QUESTIONS,
 } from "@/types/interview";
 import { buildInterviewPrompt, SYSTEM_PROMPT } from "@/lib/prompts";
 
@@ -58,6 +55,35 @@ const REASONING_HEADROOM_TOKENS = 2048;
 /** Internal marker so the retry loop can tell transient from fatal failures. */
 class TransientError extends Error {}
 
+/** Shared OpenRouter request body — one source of truth for tuning + headroom. */
+function chatRequestBody(
+  model: string,
+  messages: ChatMessage[],
+  settings: LlmSettings,
+  opts: { jsonMode?: boolean; stream?: boolean } = {},
+): string {
+  return JSON.stringify({
+    model,
+    messages,
+    temperature: settings.temperature,
+    // User's budget is for the answer; reserve extra for hidden reasoning.
+    max_tokens: settings.maxTokens + REASONING_HEADROOM_TOKENS,
+    // OpenRouter's unified reasoning param; omit entirely when disabled.
+    ...(settings.reasoningEffort !== "off"
+      ? { reasoning: { effort: settings.reasoningEffort } }
+      : {}),
+    ...(opts.jsonMode ? { response_format: { type: "json_object" } } : {}),
+    ...(opts.stream ? { stream: true } : {}),
+  });
+}
+
+const OPENROUTER_HEADERS = (apiKey: string) => ({
+  Authorization: `Bearer ${apiKey}`,
+  "Content-Type": "application/json",
+  // Optional attribution header recommended by OpenRouter.
+  "X-Title": "AI Frontend Interview Coach",
+});
+
 /** Resolve after `ms`, or reject early if the abort signal fires. */
 function delay(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -92,24 +118,8 @@ async function chatAttempt(
     res = await fetch(OPENROUTER_URL, {
       method: "POST",
       signal,
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        // Optional attribution headers recommended by OpenRouter.
-        "X-Title": "AI Frontend Interview Coach",
-      },
-      body: JSON.stringify({
-        model,
-        messages,
-        temperature: settings.temperature,
-        // User's budget is for the answer; reserve extra for hidden reasoning.
-        max_tokens: settings.maxTokens + REASONING_HEADROOM_TOKENS,
-        // OpenRouter's unified reasoning param; omit entirely when disabled.
-        ...(settings.reasoningEffort !== "off"
-          ? { reasoning: { effort: settings.reasoningEffort } }
-          : {}),
-        ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
-      }),
+      headers: OPENROUTER_HEADERS(apiKey),
+      body: chatRequestBody(model, messages, settings, { jsonMode }),
     });
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") throw err;
@@ -190,74 +200,137 @@ export async function openRouterChat(
 }
 
 /**
- * Parse untrusted model output into validated InterviewQuestion[]. Tolerates a
- * stray ```json fence and coerces/clamps the shape rather than trusting it.
+ * Open a streaming OpenRouter connection, retrying transient failures that occur
+ * *before* the response body begins. Returns the OK Response. Because the caller
+ * turns this into an HTTP response body, any error here still happens before a
+ * status code is committed, so the route can map it to a real 4xx/5xx.
  */
-export function parseQuestions(raw: string): InterviewQuestion[] {
-  const cleaned = raw
-    .trim()
-    .replace(/^```(?:json)?/i, "")
-    .replace(/```$/, "")
-    .trim();
+async function connectChatStream(
+  apiKey: string,
+  model: string,
+  messages: ChatMessage[],
+  settings: LlmSettings,
+  signal?: AbortSignal,
+): Promise<Response> {
+  let lastTransient = "OpenRouter request failed.";
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    let res: Response;
+    try {
+      res = await fetch(OPENROUTER_URL, {
+        method: "POST",
+        signal,
+        headers: OPENROUTER_HEADERS(apiKey),
+        body: chatRequestBody(model, messages, settings, { stream: true }),
+      });
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") throw err;
+      lastTransient = "Failed to reach OpenRouter.";
+      if (attempt < MAX_ATTEMPTS) {
+        await delay(BASE_BACKOFF_MS * 2 ** (attempt - 1), signal);
+        continue;
+      }
+      throw new OpenRouterError(lastTransient);
+    }
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(cleaned);
-  } catch {
-    throw new OpenRouterError("Model output was not valid JSON.");
+    if (res.ok) return res;
+
+    const detail = await res.text().catch(() => "");
+    const message = `OpenRouter returned ${res.status}${detail ? `: ${detail.slice(0, 200)}` : ""}.`;
+    if (RETRYABLE_STATUS.has(res.status) && attempt < MAX_ATTEMPTS) {
+      lastTransient = message;
+      await delay(BASE_BACKOFF_MS * 2 ** (attempt - 1), signal);
+      continue;
+    }
+    // 4xx (bad key, bad request) won't fix themselves — fail fast.
+    throw new OpenRouterError(message);
   }
-
-  const list =
-    parsed && typeof parsed === "object" && "questions" in parsed
-      ? (parsed as { questions: unknown }).questions
-      : parsed;
-
-  if (!Array.isArray(list)) {
-    throw new OpenRouterError(
-      "Model output did not contain a questions array.",
-    );
-  }
-
-  const questions: InterviewQuestion[] = [];
-  for (const item of list) {
-    if (!item || typeof item !== "object") continue;
-    const q = item as Record<string, unknown>;
-    const question = typeof q.question === "string" ? q.question.trim() : "";
-    const answer = typeof q.answer === "string" ? q.answer.trim() : "";
-    if (!question || !answer) continue;
-
-    const followUps = Array.isArray(q.followUps)
-      ? q.followUps
-          .filter((f): f is string => typeof f === "string" && f.trim() !== "")
-          .map((f) => f.trim())
-      : [];
-
-    questions.push({ question, answer, followUps });
-  }
-
-  if (questions.length === 0) {
-    throw new OpenRouterError("Model produced no usable questions.");
-  }
-
-  return questions.slice(0, MAX_QUESTIONS);
+  throw new OpenRouterError(lastTransient);
 }
 
-/** High-level entry point used by the API route. */
-export async function generateInterview(
+/**
+ * Parse an OpenRouter SSE stream, yielding assistant content deltas as they
+ * arrive. Ignores keep-alive comment lines and stops at the `[DONE]` sentinel.
+ */
+async function* sseDeltas(res: Response): AsyncGenerator<string> {
+  if (!res.body) throw new OpenRouterError("OpenRouter returned no body.");
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let nl: number;
+    while ((nl = buffer.indexOf("\n")) !== -1) {
+      const line = buffer.slice(0, nl).trim();
+      buffer = buffer.slice(nl + 1);
+      // Blank lines separate events; lines starting with ":" are keep-alives.
+      if (!line || line.startsWith(":")) continue;
+      if (!line.startsWith("data:")) continue;
+      const data = line.slice(5).trim();
+      if (data === "[DONE]") return;
+      let json: {
+        choices?: Array<{ delta?: { content?: string } }>;
+      };
+      try {
+        json = JSON.parse(data);
+      } catch {
+        continue; // partial/garbled event — skip it
+      }
+      const delta = json.choices?.[0]?.delta?.content;
+      if (typeof delta === "string" && delta.length > 0) yield delta;
+    }
+  }
+}
+
+/**
+ * High-level entry point used by the API route: stream an interview generation
+ * as raw text (the delimited block format from `lib/interviewFormat`). Errors
+ * before the first byte throw (real HTTP status); a mid-stream failure or abort
+ * just ends the stream, so a truncated response degrades instead of erroring.
+ */
+export async function streamInterview(
   req: InterviewRequest,
   signal?: AbortSignal,
-): Promise<InterviewResponse> {
-  const content = await openRouterChat(
-    [
-      { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: buildInterviewPrompt(req) },
-    ],
-    { settings: req.settings ?? DEFAULT_LLM_SETTINGS, jsonMode: true, signal },
-  );
+): Promise<ReadableStream<Uint8Array>> {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) {
+    throw new OpenRouterError("OPENROUTER_API_KEY is not configured.");
+  }
+  const settings = req.settings ?? DEFAULT_LLM_SETTINGS;
+  const model = process.env.OPENROUTER_MODEL || settings.model;
+  const messages: ChatMessage[] = [
+    { role: "system", content: SYSTEM_PROMPT },
+    { role: "user", content: buildInterviewPrompt(req) },
+  ];
 
-  return {
-    topic: req.topic,
-    difficulty: req.difficulty,
-    questions: parseQuestions(content),
-  };
+  const res = await connectChatStream(
+    apiKey,
+    model,
+    messages,
+    settings,
+    signal,
+  );
+  const encoder = new TextEncoder();
+
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        for await (const delta of sseDeltas(res)) {
+          controller.enqueue(encoder.encode(delta));
+        }
+      } catch {
+        // Mid-stream failure or timeout abort: the 200 status is already sent,
+        // so we cannot signal an error — just end with whatever arrived.
+      } finally {
+        controller.close();
+      }
+    },
+    cancel() {
+      // Client went away — stop pulling from the upstream connection.
+      res.body?.cancel().catch(() => {});
+    },
+  });
 }
