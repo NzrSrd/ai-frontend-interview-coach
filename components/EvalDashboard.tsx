@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ApiError,
   DEFAULT_LLM_SETTINGS,
@@ -26,6 +26,21 @@ interface SessionRun {
   at: number;
   run: EvalRun;
 }
+
+/**
+ * Plain-language definitions for each aggregate metric, grounded in how this
+ * harness grades: key points the answer should cover vs. distractors (known
+ * wrong claims) it should avoid.
+ */
+const METRIC_INFO: Record<string, string> = {
+  Precision:
+    "Of all the factual claims in the answer, the share that were correct key points rather than wrong “distractor” claims. Higher means fewer incorrect statements slip in.",
+  Recall:
+    "Of all the key points a good answer should mention, the share this answer actually covered. Higher means a more complete answer.",
+  "False positive rate":
+    "Of all the known wrong claims (distractors) the answer could have made, the share it actually asserted. Lower is better.",
+  F1: "The harmonic mean of precision and recall — a single balanced score that is high only when the answer is both correct and complete.",
+};
 
 export default function EvalDashboard() {
   const [settings, setSettings] = useState<LlmSettings>(DEFAULT_LLM_SETTINGS);
@@ -175,13 +190,26 @@ function AggregatePanel({ run }: { run: EvalRun }) {
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <MetricCard label="Precision" value={formatMetric(metrics.precision)} />
-        <MetricCard label="Recall" value={formatMetric(metrics.recall)} />
+        <MetricCard
+          label="Precision"
+          value={formatMetric(metrics.precision)}
+          info={METRIC_INFO["Precision"]}
+        />
+        <MetricCard
+          label="Recall"
+          value={formatMetric(metrics.recall)}
+          info={METRIC_INFO["Recall"]}
+        />
         <MetricCard
           label="False positive rate"
           value={formatMetric(metrics.falsePositiveRate)}
+          info={METRIC_INFO["False positive rate"]}
         />
-        <MetricCard label="F1" value={formatMetric(metrics.f1)} />
+        <MetricCard
+          label="F1"
+          value={formatMetric(metrics.f1)}
+          info={METRIC_INFO["F1"]}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -194,11 +222,62 @@ function AggregatePanel({ run }: { run: EvalRun }) {
   );
 }
 
-function MetricCard({ label, value }: { label: string; value: string }) {
+function MetricCard({
+  label,
+  value,
+  info,
+}: {
+  label: string;
+  value: string;
+  info?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLSpanElement>(null);
+
+  // Dismiss the popover on outside click or Escape.
+  useEffect(() => {
+    if (!open) return;
+    function onPointerDown(e: PointerEvent) {
+      if (anchorRef.current && !anchorRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
   return (
     <div className="flex flex-col gap-1 rounded-xl bg-zinc-50 p-4 dark:bg-zinc-900">
-      <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+      <span className="flex items-center gap-1 text-xs font-medium text-zinc-500 dark:text-zinc-400">
         {label}
+        {info && (
+          <span ref={anchorRef} className="relative inline-flex">
+            <button
+              type="button"
+              onClick={() => setOpen((v) => !v)}
+              aria-expanded={open}
+              aria-label={`What is ${label}?`}
+              className="flex h-4 w-4 items-center justify-center rounded-full border border-zinc-300 text-[10px] font-semibold leading-none text-zinc-500 transition-colors hover:border-zinc-400 hover:text-zinc-700 dark:border-zinc-700 dark:text-zinc-400 dark:hover:border-zinc-500 dark:hover:text-zinc-200"
+            >
+              i
+            </button>
+            {open && (
+              <span
+                role="tooltip"
+                className="absolute left-1/2 top-6 z-20 w-52 -translate-x-1/2 rounded-lg border border-zinc-200 bg-white p-3 text-xs font-normal leading-relaxed text-zinc-600 shadow-lg dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
+              >
+                {info}
+              </span>
+            )}
+          </span>
+        )}
       </span>
       <span className="font-mono text-2xl font-semibold tabular-nums text-black dark:text-zinc-50">
         {value}
