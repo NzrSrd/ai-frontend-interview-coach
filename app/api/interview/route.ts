@@ -1,5 +1,5 @@
-import type { ApiError, InterviewResponse } from "@/types/interview";
-import { generateInterview, OpenRouterError } from "@/lib/openrouter";
+import type { ApiError } from "@/types/interview";
+import { streamInterview, OpenRouterError } from "@/lib/openrouter";
 import {
   checkRateLimit,
   getClientKey,
@@ -40,17 +40,37 @@ export async function POST(request: Request): Promise<Response> {
     return json<ApiError>({ error: validated.error }, 400);
   }
 
-  // 3. Call the model with a hard timeout.
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  // 3. Open the streaming model call. It's aborted by a hard timeout OR by the
+  //    client disconnecting (`request.signal`); `AbortSignal.timeout` is managed
+  //    by the runtime, so there's no timer to clean up. Connection-time failures
+  //    (bad key, upstream 5xx, timeout before the first byte) surface here as a
+  //    real HTTP status. Once the stream is returned the 200 is committed, so a
+  //    mid-stream truncation just ends the body — the client renders whatever
+  //    arrived instead of failing.
+  const signal = AbortSignal.any([
+    request.signal,
+    AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  ]);
+
   try {
-    const result: InterviewResponse = await generateInterview(
-      validated.data,
-      controller.signal,
-    );
-    return json<InterviewResponse>(result, 200);
+    const stream = await streamInterview(validated.data, signal);
+    return new Response(stream, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-store",
+        // Defeat proxy/CDN response buffering so chunks flush progressively.
+        "X-Accel-Buffering": "no",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
   } catch (err) {
-    if (err instanceof Error && err.name === "AbortError") {
+    // Both an AbortController abort and an AbortSignal.timeout land here; the
+    // latter throws a DOMException named "TimeoutError".
+    if (
+      err instanceof Error &&
+      (err.name === "AbortError" || err.name === "TimeoutError")
+    ) {
       return json<ApiError>(
         { error: "The request timed out. Try again." },
         504,
@@ -63,7 +83,5 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
     return json<ApiError>({ error: "Unexpected server error." }, 500);
-  } finally {
-    clearTimeout(timeout);
   }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ApiError,
   DEFAULT_LLM_SETTINGS,
@@ -21,6 +21,9 @@ import LoadingState from "@/components/LoadingState";
 import ResultCard from "@/components/ResultCard";
 import SettingsSidebar from "@/components/SettingsSidebar";
 import { saveInterview } from "@/lib/savedInterviews";
+import { finalizeQuestions, parseInterviewStream } from "@/lib/interviewFormat";
+
+type Status = "idle" | "loading" | "streaming" | "done" | "error";
 
 export default function InterviewForm() {
   const [topic, setTopic] = useState<Topic>(TOPICS[0]);
@@ -30,17 +33,34 @@ export default function InterviewForm() {
   const [settings, setSettings] = useState<LlmSettings>(DEFAULT_LLM_SETTINGS);
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
 
-  const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">(
-    "idle",
-  );
-  const [result, setResult] = useState<InterviewResponse | null>(null);
+  const [status, setStatus] = useState<Status>("idle");
+  // Raw accumulated stream text; parsed into cards on every chunk.
+  const [streamText, setStreamText] = useState<string>("");
+  // Topic/difficulty captured at submit time so the results header is stable
+  // even if the form controls change while a generation is in flight.
+  const [meta, setMeta] = useState<{
+    topic: Topic;
+    difficulty: Difficulty;
+  } | null>(null);
   const [error, setError] = useState<string>("");
+
+  // Abort any in-flight generation on a new submit or unmount.
+  const abortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  const parsed = useMemo(() => parseInterviewStream(streamText), [streamText]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setStatus("loading");
     setError("");
-    setResult(null);
+    setStreamText("");
+    setMeta({ topic, difficulty });
 
     const payload: InterviewRequest = {
       topic,
@@ -55,29 +75,67 @@ export default function InterviewForm() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
+        signal: controller.signal,
       });
 
-      const data: InterviewResponse | ApiError = await res.json();
-
       if (!res.ok) {
-        setError((data as ApiError).error ?? "Something went wrong.");
+        // Connection-time failures still return a JSON error body.
+        const data: ApiError | null = await res.json().catch(() => null);
+        setError(data?.error ?? "Something went wrong.");
+        setStatus("error");
+        return;
+      }
+      if (!res.body) {
+        setError("The server sent no response body.");
         setStatus("error");
         return;
       }
 
-      const interview = data as InterviewResponse;
-      setResult(interview);
+      // Read the streamed text and re-render cards as each chunk arrives.
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let raw = "";
+      setStatus("streaming");
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        raw += decoder.decode(value, { stream: true });
+        setStreamText(raw);
+      }
+      raw += decoder.decode(); // flush any trailing bytes
+      setStreamText(raw);
+
+      // Finalize: a truncated stream just yields fewer complete questions rather
+      // than failing. Only a genuinely empty result is treated as an error.
+      const questions = finalizeQuestions(raw);
+      if (questions.length === 0) {
+        setError(
+          "The model ran out of tokens before it could answer. Increase Max tokens and try again.",
+        );
+        setStatus("error");
+        return;
+      }
+
       setStatus("done");
       // Auto-save every generation so its answers can be graded later on the
       // eval page. Best-effort and client-only — never block the UI on it.
+      const interview: InterviewResponse = { topic, difficulty, questions };
       saveInterview(interview, settings);
-    } catch {
+    } catch (err) {
+      // A deliberate abort (new submit / unmount) is not an error.
+      if (err instanceof Error && err.name === "AbortError") return;
       setError("Could not reach the server. Please try again.");
       setStatus("error");
     }
   }
 
-  const isLoading = status === "loading";
+  // Controls stay disabled while a generation is connecting or streaming.
+  const busy = status === "loading" || status === "streaming";
+  // Show the pre-token indicator until the first question block starts forming.
+  const showWaiting =
+    status === "loading" || (status === "streaming" && parsed.length === 0);
+  const showResults =
+    (status === "streaming" || status === "done") && parsed.length > 0;
 
   return (
     <div className="flex w-full flex-col gap-8">
@@ -120,7 +178,7 @@ export default function InterviewForm() {
             <select
               value={topic}
               onChange={(e) => setTopic(e.target.value as Topic)}
-              disabled={isLoading}
+              disabled={busy}
               className="rounded-lg border border-zinc-300 bg-transparent px-3 py-2 text-sm outline-none focus:border-zinc-500 disabled:opacity-50 dark:border-zinc-700"
             >
               {TOPICS.map((t) => (
@@ -136,7 +194,7 @@ export default function InterviewForm() {
             <select
               value={difficulty}
               onChange={(e) => setDifficulty(e.target.value as Difficulty)}
-              disabled={isLoading}
+              disabled={busy}
               className="rounded-lg border border-zinc-300 bg-transparent px-3 py-2 text-sm outline-none focus:border-zinc-500 disabled:opacity-50 dark:border-zinc-700"
             >
               {DIFFICULTIES.map((d) => (
@@ -156,7 +214,7 @@ export default function InterviewForm() {
             max={MAX_QUESTIONS}
             value={count}
             onChange={(e) => setCount(Number(e.target.value))}
-            disabled={isLoading}
+            disabled={busy}
             className="accent-foreground disabled:opacity-50"
           />
         </label>
@@ -169,7 +227,7 @@ export default function InterviewForm() {
             value={focus}
             maxLength={MAX_FOCUS_LENGTH}
             onChange={(e) => setFocus(e.target.value)}
-            disabled={isLoading}
+            disabled={busy}
             placeholder="e.g. hooks, rendering performance, accessibility"
             className="rounded-lg border border-zinc-300 bg-transparent px-3 py-2 text-sm outline-none focus:border-zinc-500 disabled:opacity-50 dark:border-zinc-700"
           />
@@ -177,10 +235,10 @@ export default function InterviewForm() {
 
         <button
           type="submit"
-          disabled={isLoading}
+          disabled={busy}
           className="mt-1 flex h-11 items-center justify-center rounded-full bg-foreground px-5 text-sm font-medium text-background transition-colors hover:opacity-90 disabled:opacity-50"
         >
-          {isLoading ? "Generating…" : "Generate questions"}
+          {busy ? "Generating…" : "Generate questions"}
         </button>
       </form>
 
@@ -193,17 +251,24 @@ export default function InterviewForm() {
         </p>
       )}
 
-      {isLoading && <LoadingState />}
+      {showWaiting && <LoadingState />}
 
-      {status === "done" && result && (
+      {showResults && meta && (
         <section className="flex flex-col gap-4">
           <h2 className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
-            {result.questions.length} {result.topic} question
-            {result.questions.length === 1 ? "" : "s"} ·{" "}
-            {DIFFICULTY_LABELS[result.difficulty]}
+            {parsed.length} {meta.topic} question
+            {parsed.length === 1 ? "" : "s"} ·{" "}
+            {DIFFICULTY_LABELS[meta.difficulty]}
+            {status === "streaming" ? " · generating…" : ""}
           </h2>
-          {result.questions.map((q, i) => (
-            <ResultCard key={i} question={q} index={i} />
+          {parsed.map((q, i) => (
+            <ResultCard
+              key={i}
+              question={q}
+              index={i}
+              // Caret only on the last, still-growing card while streaming.
+              streaming={status === "streaming" && i === parsed.length - 1}
+            />
           ))}
         </section>
       )}
@@ -213,7 +278,7 @@ export default function InterviewForm() {
         onClose={() => setSettingsOpen(false)}
         settings={settings}
         onChange={setSettings}
-        disabled={isLoading}
+        disabled={busy}
       />
     </div>
   );
