@@ -22,6 +22,7 @@ import ResultCard from "@/components/ResultCard";
 import SettingsSidebar from "@/components/SettingsSidebar";
 import { saveInterview } from "@/lib/savedInterviews";
 import { finalizeQuestions, parseInterviewStream } from "@/lib/interviewFormat";
+import { DEFAULT_STRATEGY, PromptStrategy } from "@/lib/prompts/strategies";
 
 type Status = "idle" | "loading" | "streaming" | "done" | "error";
 
@@ -31,6 +32,7 @@ export default function InterviewForm() {
   const [count, setCount] = useState<number>(DEFAULT_QUESTIONS);
   const [focus, setFocus] = useState<string>("");
   const [settings, setSettings] = useState<LlmSettings>(DEFAULT_LLM_SETTINGS);
+  const [strategy, setStrategy] = useState<PromptStrategy>(DEFAULT_STRATEGY);
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
 
   const [status, setStatus] = useState<Status>("idle");
@@ -68,6 +70,7 @@ export default function InterviewForm() {
       count,
       focus: focus.trim() || undefined,
       settings,
+      strategy,
     };
 
     try {
@@ -268,6 +271,13 @@ export default function InterviewForm() {
               index={i}
               // Caret only on the last, still-growing card while streaming.
               streaming={status === "streaming" && i === parsed.length - 1}
+              // Follow-ups are answered with the same topic/technique/settings.
+              context={{
+                topic: meta.topic,
+                difficulty: meta.difficulty,
+                settings,
+                strategy,
+              }}
             />
           ))}
         </section>
@@ -278,6 +288,8 @@ export default function InterviewForm() {
         onClose={() => setSettingsOpen(false)}
         settings={settings}
         onChange={setSettings}
+        strategy={strategy}
+        onStrategyChange={setStrategy}
         disabled={busy}
       />
     </div>

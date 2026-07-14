@@ -3,6 +3,7 @@
 // untrusted (both the client request body AND the model output).
 
 import {
+  AnswerRequest,
   DEFAULT_LLM_SETTINGS,
   DIFFICULTIES,
   Difficulty,
@@ -171,7 +172,7 @@ export function validateInterviewRequest(
     return { ok: false, error: "Request body must be a JSON object." };
   }
 
-  const { topic, difficulty, count, focus, settings } = body;
+  const { topic, difficulty, count, focus, settings, strategy } = body;
 
   if (typeof topic !== "string" || !TOPICS.includes(topic as Topic)) {
     return { ok: false, error: `topic must be one of: ${TOPICS.join(", ")}.` };
@@ -225,6 +226,55 @@ export function validateInterviewRequest(
       count,
       focus: cleanFocus,
       settings: validateLlmSettings(settings),
+      strategy: validatePromptStrategy(strategy),
+    },
+  };
+}
+
+/**
+ * Validate an untrusted `POST /api/answer` body. The question normally comes
+ * from our own model (a generated follow-up) but the client can send anything,
+ * so it's treated as hostile: sanitized and length-capped before it reaches a
+ * prompt. Topic/difficulty are optional context, allowlisted when present;
+ * settings/strategy degrade to defaults. No injection detection here — a
+ * question legitimately contains words like "system"/"prompt", and the answer
+ * prompt frames it as data, so the sanitize + length cap are the guardrail.
+ */
+export function validateAnswerRequest(
+  body: unknown,
+): ValidationResult<AnswerRequest> {
+  if (!isRecord(body)) {
+    return { ok: false, error: "Request body must be a JSON object." };
+  }
+
+  const { question, topic, difficulty, settings, strategy } = body;
+
+  if (typeof question !== "string") {
+    return { ok: false, error: "question must be a string." };
+  }
+  const cleanQuestion = sanitizeText(question, MAX_EVAL_QUESTION_LENGTH);
+  if (cleanQuestion.length === 0) {
+    return { ok: false, error: "question must be non-empty." };
+  }
+
+  const cleanTopic =
+    typeof topic === "string" && TOPICS.includes(topic as Topic)
+      ? (topic as Topic)
+      : undefined;
+  const cleanDifficulty =
+    typeof difficulty === "string" &&
+    DIFFICULTIES.includes(difficulty as Difficulty)
+      ? (difficulty as Difficulty)
+      : undefined;
+
+  return {
+    ok: true,
+    data: {
+      question: cleanQuestion,
+      topic: cleanTopic,
+      difficulty: cleanDifficulty,
+      settings: validateLlmSettings(settings),
+      strategy: validatePromptStrategy(strategy),
     },
   };
 }
@@ -300,7 +350,10 @@ export function validateSavedEvalRequest(
       return { ok: false, error: "Each item needs a non-empty id." };
     }
     if (typeof topic !== "string" || !TOPICS.includes(topic as Topic)) {
-      return { ok: false, error: `item topic must be one of: ${TOPICS.join(", ")}.` };
+      return {
+        ok: false,
+        error: `item topic must be one of: ${TOPICS.join(", ")}.`,
+      };
     }
     if (
       typeof difficulty !== "string" ||
@@ -334,7 +387,10 @@ export function validateSavedEvalRequest(
     });
   }
 
-  return { ok: true, data: { items, settings: validateLlmSettings(body.settings) } };
+  return {
+    ok: true,
+    data: { items, settings: validateLlmSettings(body.settings) },
+  };
 }
 
 // --- Rate limiting ---------------------------------------------------------
