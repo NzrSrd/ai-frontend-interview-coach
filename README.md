@@ -78,6 +78,30 @@ from which precision, recall, false-positive rate, and F1 are micro-averaged
 across items. The judge always runs at temperature 0 so grades are stable across
 runs.
 
+## Prompting techniques
+
+> Classic prompting techniques are implemented as interchangeable strategies
+> behind one output contract, benchmarked with an LLM-as-judge harness instead
+> of guesswork, and the default is the cheapest one that tied for best — while
+> every prompt in the system uses role priming, strict output contracts,
+> untrusted-data framing, and deterministic grading.
+
+Each strategy (`lib/prompts/strategies.ts`) expresses the _same task_ — answer a
+frontend interview question well — with a different well-known technique:
+
+| Technique               | Idea                                                                                                                                  |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| **Zero-shot** (default) | One direct instruction. No examples, no scaffold. The baseline.                                                                       |
+| **Chain-of-thought**    | Reason through the mechanism step by step first; the reasoning shapes the explanation (but only the final answer is emitted).         |
+| **Few-shot**            | Two worked Q→A exemplars set the bar for depth/precision — deliberately on topics _disjoint_ from the gold set so no answer leaks in. |
+
+(Two more — _persona_ and _self-critique/reflexion_ — are written and were
+measured, currently disabled in the UI.)
+
+All strategies share one **output contract** (short prose, no markdown) so the
+eval judge grades _content, not format_. The user picks the technique in Model
+settings; it drives both interview generation and follow-up answers.
+
 ## Tech stack
 
 - **Next.js 16** (App Router) + **React 19**
