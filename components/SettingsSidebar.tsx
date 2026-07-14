@@ -18,12 +18,22 @@ import {
   TEMPERATURE_MIN,
   TEMPERATURE_STEP,
 } from "@/types/interview";
+import {
+  DEFAULT_STRATEGY,
+  PROMPT_STRATEGIES,
+  PromptStrategy,
+  STRATEGY_DESCRIPTIONS,
+  STRATEGY_LABELS,
+} from "@/lib/prompts/strategies";
 
 interface SettingsSidebarProps {
   open: boolean;
   onClose: () => void;
   settings: LlmSettings;
   onChange: (settings: LlmSettings) => void;
+  /** Selected prompting technique used to shape generated answers. */
+  strategy: PromptStrategy;
+  onStrategyChange: (strategy: PromptStrategy) => void;
   /** Disable controls while a request is in flight. */
   disabled?: boolean;
 }
@@ -37,6 +47,8 @@ export default function SettingsSidebar({
   onClose,
   settings,
   onChange,
+  strategy,
+  onStrategyChange,
   disabled = false,
 }: SettingsSidebarProps) {
   // Close on Escape while the drawer is open.
@@ -57,7 +69,13 @@ export default function SettingsSidebar({
     settings.model === DEFAULT_LLM_SETTINGS.model &&
     settings.temperature === DEFAULT_LLM_SETTINGS.temperature &&
     settings.maxTokens === DEFAULT_LLM_SETTINGS.maxTokens &&
-    settings.reasoningEffort === DEFAULT_LLM_SETTINGS.reasoningEffort;
+    settings.reasoningEffort === DEFAULT_LLM_SETTINGS.reasoningEffort &&
+    strategy === DEFAULT_STRATEGY;
+
+  function resetToDefaults() {
+    onChange({ ...DEFAULT_LLM_SETTINGS });
+    onStrategyChange(DEFAULT_STRATEGY);
+  }
 
   return (
     <>
@@ -107,6 +125,26 @@ export default function SettingsSidebar({
         </div>
 
         <div className="flex flex-1 flex-col gap-7 overflow-y-auto px-6 py-6">
+          {/* Prompt technique */}
+          <label className={fieldLabel}>
+            Prompt technique
+            <select
+              value={strategy}
+              disabled={disabled}
+              onChange={(e) =>
+                onStrategyChange(e.target.value as PromptStrategy)
+              }
+              className="rounded-lg border border-zinc-300 bg-transparent px-3 py-2 text-sm outline-none focus:border-zinc-500 disabled:opacity-50 dark:border-zinc-700"
+            >
+              {PROMPT_STRATEGIES.map((s) => (
+                <option key={s} value={s}>
+                  {STRATEGY_LABELS[s]}
+                </option>
+              ))}
+            </select>
+            <span className={helpText}>{STRATEGY_DESCRIPTIONS[strategy]}</span>
+          </label>
+
           {/* Model */}
           <label className={fieldLabel}>
             Model
@@ -213,7 +251,7 @@ export default function SettingsSidebar({
           <button
             type="button"
             disabled={disabled || isDefault}
-            onClick={() => onChange({ ...DEFAULT_LLM_SETTINGS })}
+            onClick={resetToDefaults}
             className="text-sm font-medium text-zinc-600 transition-colors hover:text-black disabled:opacity-40 dark:text-zinc-400 dark:hover:text-zinc-50"
           >
             Reset to defaults

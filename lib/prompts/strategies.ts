@@ -16,29 +16,29 @@
 
 export const PROMPT_STRATEGIES = [
   "zero-shot",
-  "persona",
+  // "persona",
   "chain-of-thought",
   "few-shot",
-  "self-critique",
+  // "self-critique",
 ] as const;
 
 export type PromptStrategy = (typeof PROMPT_STRATEGIES)[number];
 
 export const STRATEGY_LABELS: Record<PromptStrategy, string> = {
   "zero-shot": "Zero-shot",
-  persona: "Role / persona",
+  // "persona": "Role / persona",
   "chain-of-thought": "Chain-of-thought",
   "few-shot": "Few-shot",
-  "self-critique": "Self-critique",
+  // "self-critique": "Self-critique",
 };
 
 export const STRATEGY_DESCRIPTIONS: Record<PromptStrategy, string> = {
   "zero-shot": "Plain direct instruction — no examples, no reasoning scaffold.",
-  persona: "Establishes an expert role and audience before answering.",
+  // "persona": "Establishes an expert role and audience before answering.",
   "chain-of-thought": "Reason through the mechanism step by step, then answer.",
   "few-shot": "Two worked examples set the bar for depth and precision.",
-  "self-critique":
-    "Draft, self-review for errors, then output the vetted answer.",
+  // "self-critique":
+  //   "Draft, self-review for errors, then output the vetted answer.",
 };
 
 // The shared output contract appended to every strategy so grading is fair.
@@ -115,10 +115,10 @@ ${OUTPUT_CONTRACT}`;
 
 const PROMPTS: Record<PromptStrategy, string> = {
   "zero-shot": ZERO_SHOT,
-  persona: PERSONA,
+  // "persona": PERSONA,
   "chain-of-thought": CHAIN_OF_THOUGHT,
   "few-shot": FEW_SHOT,
-  "self-critique": SELF_CRITIQUE,
+  // "self-critique": SELF_CRITIQUE,
 };
 
 /**
