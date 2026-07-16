@@ -42,8 +42,8 @@ strategy, temperature, token budget, and reasoning effort.
     and reports **precision, recall, false-positive rate, and F1**, plus a
     confusion matrix and per-question verdicts.
   - **Prompt strategies** — compare well-known prompting techniques (zero-shot,
-    persona, chain-of-thought, few-shot, self-critique) on the same gold set to
-    see which produces the most accurate answers.
+    chain-of-thought, few-shot) on the same gold set to see which produces the
+    most accurate answers.
 - **Saved interviews & re-evaluation** — every generated interview is auto-saved
   to your browser (localStorage). On the eval page you can:
   - Grade the saved answers. Since saved Q&A carry no labels, the server derives
@@ -78,6 +78,30 @@ from which precision, recall, false-positive rate, and F1 are micro-averaged
 across items. The judge always runs at temperature 0 so grades are stable across
 runs.
 
+## Prompting techniques
+
+> Classic prompting techniques are implemented as interchangeable strategies
+> behind one output contract, benchmarked with an LLM-as-judge harness instead
+> of guesswork, and the default is the cheapest one that tied for best — while
+> every prompt in the system uses role priming, strict output contracts,
+> untrusted-data framing, and deterministic grading.
+
+Each strategy (`lib/prompts/strategies.ts`) expresses the _same task_ — answer a
+frontend interview question well — with a different well-known technique:
+
+| Technique               | Idea                                                                                                                                  |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| **Zero-shot** (default) | One direct instruction. No examples, no scaffold. The baseline.                                                                       |
+| **Chain-of-thought**    | Reason through the mechanism step by step first; the reasoning shapes the explanation (but only the final answer is emitted).         |
+| **Few-shot**            | Two worked Q→A exemplars set the bar for depth/precision — deliberately on topics _disjoint_ from the gold set so no answer leaks in. |
+
+(Two more — _persona_ and _self-critique/reflexion_ — are written and were
+measured, currently disabled in the UI.)
+
+All strategies share one **output contract** (short prose, no markdown) so the
+eval judge grades _content, not format_. The user picks the technique in Model
+settings; it drives both interview generation and follow-up answers.
+
 ## Tech stack
 
 - **Next.js 16** (App Router) + **React 19**
@@ -92,7 +116,8 @@ app/
   page.tsx                    Home — interview generator
   eval/page.tsx               Evaluation dashboard
   api/
-    interview/route.ts        POST — generate an interview
+    interview/route.ts        POST — generate an interview (streamed)
+    answer/route.ts           POST — answer a follow-up question (streamed)
     evaluate/route.ts         POST — run the gold set
     evaluate/saved/route.ts   POST — grade saved interview answers
 components/
@@ -120,9 +145,43 @@ Notes:
 - **Saved data is per-browser.** Interviews and run history live in
   `localStorage`, so they don't sync across devices and are cleared with site
   data.
-- **Security.** The API rate-limits per client, sanitizes and length-caps all
-  free text before it reaches a model, and rejects prompt-injection attempts in
-  the focus field.
+
+## Security
+
+Defense-in-depth around one core assumption: **every input is hostile** — the
+request body, the free text, the model's output, and the browser's own storage
+(`lib/security.ts` plus the API routes).
+
+- **Secrets stay server-side.** `OPENROUTER_API_KEY` lives in `.env`
+  (gitignored) and is only read in `lib/openrouter.ts`, a server-only module
+  never imported into client components.
+- **Strict validation on every API route.** Enums are allowlisted (topic,
+  difficulty, model, reasoning effort, prompt strategy) and numbers clamped to
+  bounds (temperature, max tokens, question count). Critical fields reject with
+  400; tuning knobs degrade to safe defaults. The model allowlist means a forged
+  request can never route an arbitrary or expensive model to the paid API.
+- **Free-text sanitization.** Before any text reaches a prompt, `sanitizeText`
+  strips control characters, collapses whitespace, and hard-caps length.
+- **Prompt-injection defense, two layers.** A regex detector rejects jailbreak
+  phrasing in the `focus` field (ignore-previous-instructions,
+  reveal-system-prompt, role hijacking, fake `system:` turns) with a 400 before
+  the model ever sees it; the system prompt additionally frames all user text as
+  untrusted _data_ to theme questions around, never as instructions. Eval and
+  follow-up text skips the regex — legitimate technical answers contain words
+  like "system" — so sanitize + length cap is the guardrail there.
+- **Rate limiting and cost controls.** A fixed-window in-memory limiter caps
+  requests per client IP (with a `Retry-After` header); eval routes get a
+  separate bucket because one run fans out many paid calls. Upstream LLM calls
+  carry hard timeouts (45s generate, 120s eval) and responses are never cached
+  (`force-dynamic`). The limiter is per-process by design — swap in
+  Redis/Upstash for multi-instance scale.
+- **Model output is untrusted.** Responses are parsed defensively — tolerant
+  parsing, shape coercion, clamped to `MAX_QUESTIONS` — never assumed to match
+  the requested schema.
+- **Client storage is untrusted.** localStorage payloads (saved interviews,
+  cached labels) can be hand-edited in devtools, so they are re-validated on
+  read _and_ server-side on submit; tampered labels degrade to a fresh
+  re-derive rather than a broken grade.
 
 ## Prerequisites
 

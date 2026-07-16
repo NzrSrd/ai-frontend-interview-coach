@@ -3,6 +3,10 @@
 // server (API route / validation). Keep it free of any runtime/Node imports
 // so it can be bundled into client components.
 
+// Type-only import: `strategies` is pure strings + types and client-safe, and a
+// `import type` is erased at build time, so this adds no runtime dependency.
+import type { PromptStrategy } from "@/lib/prompts/strategies";
+
 export const TOPICS = [
   "React",
   "Next.js",
@@ -118,6 +122,20 @@ export interface InterviewRequest {
   focus?: string;
   /** Optional model tuning; defaults applied server-side when omitted. */
   settings?: LlmSettings;
+  /** Prompting technique to shape the generated answers; default applied server-side. */
+  strategy?: PromptStrategy;
+}
+
+/**
+ * What the client sends to `POST /api/answer` to get a model answer for a single
+ * (follow-up) question. Topic/difficulty are optional context for the prompt.
+ */
+export interface AnswerRequest {
+  question: string;
+  topic?: Topic;
+  difficulty?: Difficulty;
+  settings?: LlmSettings;
+  strategy?: PromptStrategy;
 }
 
 export interface InterviewQuestion {

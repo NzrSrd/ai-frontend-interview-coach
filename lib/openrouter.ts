@@ -3,11 +3,17 @@
 // component.
 
 import {
+  AnswerRequest,
   DEFAULT_LLM_SETTINGS,
   InterviewRequest,
   LlmSettings,
 } from "@/types/interview";
-import { buildInterviewPrompt, SYSTEM_PROMPT } from "@/lib/prompts";
+import {
+  buildAnswerPrompt,
+  buildInterviewPrompt,
+  SYSTEM_PROMPT,
+} from "@/lib/prompts";
+import { answerSystemPrompt, DEFAULT_STRATEGY } from "@/lib/prompts/strategies";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -286,32 +292,28 @@ async function* sseDeltas(res: Response): AsyncGenerator<string> {
 }
 
 /**
- * High-level entry point used by the API route: stream an interview generation
- * as raw text (the delimited block format from `lib/interviewFormat`). Errors
- * before the first byte throw (real HTTP status); a mid-stream failure or abort
- * just ends the stream, so a truncated response degrades instead of erroring.
+ * Stream an arbitrary chat completion as raw text. Shared by the interview and
+ * follow-up-answer routes. Errors before the first byte throw (real HTTP status
+ * for the caller); a mid-stream failure or abort just ends the stream, so a
+ * truncated response degrades instead of erroring.
  */
-export async function streamInterview(
-  req: InterviewRequest,
-  signal?: AbortSignal,
+export async function streamChat(
+  messages: ChatMessage[],
+  options: { settings?: LlmSettings; signal?: AbortSignal } = {},
 ): Promise<ReadableStream<Uint8Array>> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     throw new OpenRouterError("OPENROUTER_API_KEY is not configured.");
   }
-  const settings = req.settings ?? DEFAULT_LLM_SETTINGS;
+  const settings = options.settings ?? DEFAULT_LLM_SETTINGS;
   const model = process.env.OPENROUTER_MODEL || settings.model;
-  const messages: ChatMessage[] = [
-    { role: "system", content: SYSTEM_PROMPT },
-    { role: "user", content: buildInterviewPrompt(req) },
-  ];
 
   const res = await connectChatStream(
     apiKey,
     model,
     messages,
     settings,
-    signal,
+    options.signal,
   );
   const encoder = new TextEncoder();
 
@@ -333,4 +335,42 @@ export async function streamInterview(
       res.body?.cancel().catch(() => {});
     },
   });
+}
+
+/**
+ * High-level entry point used by the interview route: stream an interview
+ * generation as raw text (the delimited block format from `lib/interviewFormat`).
+ */
+export function streamInterview(
+  req: InterviewRequest,
+  signal?: AbortSignal,
+): Promise<ReadableStream<Uint8Array>> {
+  return streamChat(
+    [
+      { role: "system", content: SYSTEM_PROMPT },
+      { role: "user", content: buildInterviewPrompt(req) },
+    ],
+    { settings: req.settings ?? DEFAULT_LLM_SETTINGS, signal },
+  );
+}
+
+/**
+ * High-level entry point used by the answer route: stream a plain-prose answer
+ * to a single (follow-up) question, using the caller's chosen prompting
+ * technique — the same `answerSystemPrompt` the eval harness measures.
+ */
+export function streamAnswer(
+  req: AnswerRequest,
+  signal?: AbortSignal,
+): Promise<ReadableStream<Uint8Array>> {
+  return streamChat(
+    [
+      {
+        role: "system",
+        content: answerSystemPrompt(req.strategy ?? DEFAULT_STRATEGY),
+      },
+      { role: "user", content: buildAnswerPrompt(req) },
+    ],
+    { settings: req.settings ?? DEFAULT_LLM_SETTINGS, signal },
+  );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import {
   DEFAULT_LLM_SETTINGS,
   LlmSettings,
@@ -18,12 +18,22 @@ import {
   TEMPERATURE_MIN,
   TEMPERATURE_STEP,
 } from "@/types/interview";
+import {
+  DEFAULT_STRATEGY,
+  PROMPT_STRATEGIES,
+  PromptStrategy,
+  STRATEGY_DESCRIPTIONS,
+  STRATEGY_LABELS,
+} from "@/lib/prompts/strategies";
 
 interface SettingsSidebarProps {
   open: boolean;
   onClose: () => void;
   settings: LlmSettings;
   onChange: (settings: LlmSettings) => void;
+  /** Selected prompting technique used to shape generated answers. */
+  strategy: PromptStrategy;
+  onStrategyChange: (strategy: PromptStrategy) => void;
   /** Disable controls while a request is in flight. */
   disabled?: boolean;
 }
@@ -37,17 +47,73 @@ export default function SettingsSidebar({
   onClose,
   settings,
   onChange,
+  strategy,
+  onStrategyChange,
   disabled = false,
 }: SettingsSidebarProps) {
-  // Close on Escape while the drawer is open.
+  const asideRef = useRef<HTMLElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+
+  // Track the latest onClose without listing it as an effect dependency: the
+  // parent passes a fresh inline onClose every render, and if the modal effect
+  // depended on it, its cleanup would re-run mid-session and yank focus back to
+  // the trigger while the drawer is still open.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+
+  // While open, the drawer behaves as a proper modal dialog: move focus inside,
+  // trap Tab, lock body scroll, close on Escape, and restore focus to whatever
+  // opened it (the "Model settings" trigger) on close.
   useEffect(() => {
     if (!open) return;
+
+    previouslyFocusedRef.current = document.activeElement as HTMLElement | null;
+    closeButtonRef.current?.focus();
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        onCloseRef.current();
+        return;
+      }
+      if (e.key !== "Tab") return;
+
+      const container = asideRef.current;
+      if (!container) return;
+      const focusable = Array.from(
+        container.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+      if (focusable.length === 0) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+
+      if (e.shiftKey) {
+        if (active === first || !container.contains(active)) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (active === last || !container.contains(active)) {
+        e.preventDefault();
+        first.focus();
+      }
     }
+
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, onClose]);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previouslyFocusedRef.current?.focus();
+    };
+  }, [open]);
 
   function update<K extends keyof LlmSettings>(key: K, value: LlmSettings[K]) {
     onChange({ ...settings, [key]: value });
@@ -57,7 +123,13 @@ export default function SettingsSidebar({
     settings.model === DEFAULT_LLM_SETTINGS.model &&
     settings.temperature === DEFAULT_LLM_SETTINGS.temperature &&
     settings.maxTokens === DEFAULT_LLM_SETTINGS.maxTokens &&
-    settings.reasoningEffort === DEFAULT_LLM_SETTINGS.reasoningEffort;
+    settings.reasoningEffort === DEFAULT_LLM_SETTINGS.reasoningEffort &&
+    strategy === DEFAULT_STRATEGY;
+
+  function resetToDefaults() {
+    onChange({ ...DEFAULT_LLM_SETTINGS });
+    onStrategyChange(DEFAULT_STRATEGY);
+  }
 
   return (
     <>
@@ -72,9 +144,14 @@ export default function SettingsSidebar({
 
       {/* Drawer */}
       <aside
+        ref={asideRef}
         role="dialog"
         aria-modal="true"
         aria-label="Model settings"
+        // When closed, `inert` takes the off-screen drawer out of the tab order
+        // and the accessibility tree, so it can't be reached by keyboard and is
+        // no longer announced as an always-present modal dialog.
+        inert={!open}
         className={`fixed right-0 top-0 z-50 flex h-full w-full max-w-sm flex-col border-l border-zinc-200 bg-white shadow-xl transition-transform duration-200 dark:border-zinc-800 dark:bg-zinc-950 ${
           open ? "translate-x-0" : "translate-x-full"
         }`}
@@ -84,6 +161,7 @@ export default function SettingsSidebar({
             Model settings
           </h2>
           <button
+            ref={closeButtonRef}
             type="button"
             onClick={onClose}
             aria-label="Close settings"
@@ -107,6 +185,26 @@ export default function SettingsSidebar({
         </div>
 
         <div className="flex flex-1 flex-col gap-7 overflow-y-auto px-6 py-6">
+          {/* Prompt technique */}
+          <label className={fieldLabel}>
+            Prompt technique
+            <select
+              value={strategy}
+              disabled={disabled}
+              onChange={(e) =>
+                onStrategyChange(e.target.value as PromptStrategy)
+              }
+              className="rounded-lg border border-zinc-300 bg-transparent px-3 py-2 text-sm outline-none focus:border-zinc-500 disabled:opacity-50 dark:border-zinc-700"
+            >
+              {PROMPT_STRATEGIES.map((s) => (
+                <option key={s} value={s}>
+                  {STRATEGY_LABELS[s]}
+                </option>
+              ))}
+            </select>
+            <span className={helpText}>{STRATEGY_DESCRIPTIONS[strategy]}</span>
+          </label>
+
           {/* Model */}
           <label className={fieldLabel}>
             Model
@@ -213,7 +311,7 @@ export default function SettingsSidebar({
           <button
             type="button"
             disabled={disabled || isDefault}
-            onClick={() => onChange({ ...DEFAULT_LLM_SETTINGS })}
+            onClick={resetToDefaults}
             className="text-sm font-medium text-zinc-600 transition-colors hover:text-black disabled:opacity-40 dark:text-zinc-400 dark:hover:text-zinc-50"
           >
             Reset to defaults
