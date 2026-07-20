@@ -21,11 +21,24 @@ This file provides guidance to Claude Code (claude.ai code) when working with co
 - `npm run lint` - Run ESLint (flat config, `eslint.config.mjs`)
 - `npm run typecheck` - Type-check with `tsc --noEmit` (strict mode)
 - `npm run format` / `npm run format:check` - Write / check Prettier formatting
+- `npm test` - Run the Vitest suite once (`vitest run`)
+- `npm run test:watch` - Vitest in watch mode
+- `npm run test:coverage` - Run with v8 coverage; enforces a **70% line/branch/
+  function/statement threshold** scoped to `lib/**` + `app/api/**`
 
-There is **no test script and no test suite** — nothing under `npm test`. The eval
-harness (`lib/eval/`) partially substitutes for tests by measuring answer quality,
-but the pure modules (`lib/eval/metrics.ts`, `lib/interviewFormat.ts`,
-`lib/security.ts` validators) are unit-testable and currently uncovered.
+## Testing
+
+- **Vitest** (`vitest.config.ts`), a test pyramid: unit tests over the pure seams
+  (`lib/eval/metrics.ts`, `lib/interviewFormat.ts`, `lib/security.ts`,
+  `lib/prompts*`, `lib/eval/goldset.ts`), integration tests with a mocked `fetch`/
+  transport (`lib/openrouter.ts`, the `lib/eval/*` runners, and the four
+  `app/api/*/route.ts` handlers), storage tests (`lib/saved*.ts`, happy-dom), and a
+  few RTL component smoke tests. Tests live next to their subject as `*.test.ts(x)`.
+- The coverage gate covers the logic core only; `components/**` and pages are
+  excluded from the threshold (see `coverage.exclude` in `vitest.config.ts`).
+- Node default environment; storage/component specs opt into happy-dom with a
+  `// @vitest-environment happy-dom` file header.
+- CI (`.github/workflows/ci.yml`) runs typecheck + lint + `test:coverage` on push/PR.
 
 ## Environment
 
