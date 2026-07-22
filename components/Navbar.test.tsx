@@ -27,14 +27,14 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-import Header from "@/components/header";
+import Navbar from "@/components/Navbar";
 
 afterEach(cleanup);
 
-describe("Header", () => {
+describe("Navbar", () => {
   it("shows the logo home link and the eval dashboard link on the home page", () => {
     pathname.mockReturnValue("/");
-    render(<Header />);
+    render(<Navbar />);
     expect(screen.getByRole("link", { name: /home/i })).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: /eval dashboard/i }),
@@ -43,7 +43,7 @@ describe("Header", () => {
 
   it("hides the eval link from assistive tech off the home page", () => {
     pathname.mockReturnValue("/eval");
-    render(<Header />);
+    render(<Navbar />);
     const evalLink = screen.getByText(/eval dashboard/i).closest("a");
     expect(evalLink).toHaveAttribute("aria-hidden", "true");
     expect(evalLink).toHaveAttribute("tabindex", "-1");
