@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ViewTransition } from "react";
 import Navbar from "@/components/Navbar";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -27,11 +28,13 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark:bg-black dark:text-zinc-400`}
     >
       <body>
         <Navbar />
-        <main className="flex min-h-full flex-col">{children}</main>
+        <main className="flex min-h-full flex-col">
+          <ViewTransition default="page-fade">{children}</ViewTransition>
+        </main>
       </body>
     </html>
   );
