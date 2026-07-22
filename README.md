@@ -223,3 +223,14 @@ request body, the free text, the model's output, and the browser's own storage
 - `npm run lint` — Run ESLint
 - `npm run typecheck` — Type-check with `tsc --noEmit`
 - `npm run format` — Format with Prettier (`format:check` to verify only)
+- `npm test` — Run the Vitest suite (`test:watch` for watch mode, `test:coverage` for coverage)
+
+## Testing
+
+Vitest covers a test pyramid over the logic core: unit tests on the pure modules
+(`lib/eval/metrics.ts`, `lib/interviewFormat.ts`, `lib/security.ts`, prompt
+builders), integration tests with a mocked transport for `lib/openrouter.ts`, the
+eval runners, and the four `app/api/*` route handlers, plus localStorage-store and
+RTL component smoke tests. `npm run test:coverage` enforces a 70% threshold scoped
+to `lib/**` + `app/api/**`. CI (`.github/workflows/ci.yml`) runs typecheck, lint,
+and the coverage suite on every push and pull request.

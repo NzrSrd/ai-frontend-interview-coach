@@ -55,7 +55,8 @@ Answer it accurately and concisely. ${OUTPUT_CONTRACT}`;
 // --- 2. Role / persona -----------------------------------------------------
 // Same task, but we prime an expert identity and a demanding audience. Persona
 // framing tends to lift domain precision and tone at little cost.
-const PERSONA = `You are a principal frontend engineer with 15 years of \
+// Exported (not registered) so it survives lint while disabled in the UI.
+export const PERSONA = `You are a principal frontend engineer with 15 years of \
 production experience, known for explaining hard concepts precisely to a senior \
 hiring panel. A candidate has been asked the question below; give the model \
 answer you would want to hear. Be rigorous — the panel will catch any \
@@ -105,7 +106,8 @@ many stylesheets set it globally on all elements.`;
 // Ask the model to draft, then audit its own draft for overclaims and common
 // misconceptions, and emit only the corrected answer. Targets precision —
 // fewer asserted distractors — at some latency cost.
-const SELF_CRITIQUE = `You are answering a technical frontend interview \
+// Exported (not registered) so it survives lint while disabled in the UI.
+export const SELF_CRITIQUE = `You are answering a technical frontend interview \
 question. Work in two silent passes and show only the result of the second. \
 First, draft an answer. Second, critically review your draft: check every claim \
 for technical accuracy, delete anything you are not confident is correct, and \

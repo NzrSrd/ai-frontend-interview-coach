@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import {
   DEFAULT_LLM_SETTINGS,
   LlmSettings,
@@ -51,15 +51,69 @@ export default function SettingsSidebar({
   onStrategyChange,
   disabled = false,
 }: SettingsSidebarProps) {
-  // Close on Escape while the drawer is open.
+  const asideRef = useRef<HTMLElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+
+  // Track the latest onClose without listing it as an effect dependency: the
+  // parent passes a fresh inline onClose every render, and if the modal effect
+  // depended on it, its cleanup would re-run mid-session and yank focus back to
+  // the trigger while the drawer is still open.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+
+  // While open, the drawer behaves as a proper modal dialog: move focus inside,
+  // trap Tab, lock body scroll, close on Escape, and restore focus to whatever
+  // opened it (the "Model settings" trigger) on close.
   useEffect(() => {
     if (!open) return;
+
+    previouslyFocusedRef.current = document.activeElement as HTMLElement | null;
+    closeButtonRef.current?.focus();
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        onCloseRef.current();
+        return;
+      }
+      if (e.key !== "Tab") return;
+
+      const container = asideRef.current;
+      if (!container) return;
+      const focusable = Array.from(
+        container.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+      if (focusable.length === 0) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+
+      if (e.shiftKey) {
+        if (active === first || !container.contains(active)) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (active === last || !container.contains(active)) {
+        e.preventDefault();
+        first.focus();
+      }
     }
+
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, onClose]);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previouslyFocusedRef.current?.focus();
+    };
+  }, [open]);
 
   function update<K extends keyof LlmSettings>(key: K, value: LlmSettings[K]) {
     onChange({ ...settings, [key]: value });
@@ -90,9 +144,14 @@ export default function SettingsSidebar({
 
       {/* Drawer */}
       <aside
+        ref={asideRef}
         role="dialog"
         aria-modal="true"
         aria-label="Model settings"
+        // When closed, `inert` takes the off-screen drawer out of the tab order
+        // and the accessibility tree, so it can't be reached by keyboard and is
+        // no longer announced as an always-present modal dialog.
+        inert={!open}
         className={`fixed right-0 top-0 z-50 flex h-full w-full max-w-sm flex-col border-l border-zinc-200 bg-white shadow-xl transition-transform duration-200 dark:border-zinc-800 dark:bg-zinc-950 ${
           open ? "translate-x-0" : "translate-x-full"
         }`}
@@ -102,6 +161,7 @@ export default function SettingsSidebar({
             Model settings
           </h2>
           <button
+            ref={closeButtonRef}
             type="button"
             onClick={onClose}
             aria-label="Close settings"
